@@ -51,6 +51,16 @@ def _get_dependencies(requirement, distributions):
             if _name.replace("-", "_") == pip_to_rez_name:
                 return dist.name.replace("-", "_")
 
+    def convert_pip_version_to_rez(version):
+        if "~=" in version:
+            version = version.replace("~=", "")
+            version += "+"
+        else:                    
+            version = version.replace("==", "")
+
+        return version
+
+
     result = []
     requirements = ([requirement] if isinstance(requirement, basestring)
                     else requirement["requires"])
@@ -59,7 +69,7 @@ def _get_dependencies(requirement, distributions):
         if "(" in package:
             try:
                 name, version = parse_name_and_version(package)
-                version = version.replace("==", "")
+                version = convert_pip_version_to_rez(version)
                 name = get_distrubution_name(name)
             except DistlibException:
                 n, vs = package.split(' (')
@@ -67,8 +77,7 @@ def _get_dependencies(requirement, distributions):
                 versions = []
                 for v in vs.split(','):
                     package = "%s (%s)" % (n, v)
-                    name, version = parse_name_and_version(package)
-                    version = version.replace("==", "")
+                    version = convert_pip_version_to_rez(version)                    
                     versions.append(version)
                 version = "".join(versions)
 
