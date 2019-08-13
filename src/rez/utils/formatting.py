@@ -1,6 +1,8 @@
 """
 Utilities related to formatting output or translating input.
 """
+from __future__ import absolute_import
+
 from string import Formatter
 from rez.vendor.enum import Enum
 from rez.vendor.version.requirement import Requirement
@@ -44,7 +46,7 @@ class PackageRequest(Requirement):
     Example:
 
         >>> pr = PackageRequest("foo-1.3+")
-        >>> print pr.name, pr.range
+        >>> print(pr.name, pr.range)
         foo 1.3+
     """
     def __init__(self, s):
@@ -247,7 +249,7 @@ def dict_to_attributes_code(dict_):
 
     Example:
         >>> d = {'foo': 'bah', 'colors': {'red': 1, 'blue': 2}}
-        >>> print dict_to_attributes_code(d)
+        >>> print(dict_to_attributes_code(d))
         foo = 'bah'
         colors.red = 1
         colors.blue = 2

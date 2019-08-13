@@ -3,6 +3,7 @@ import sys
 import os
 import os.path
 import re
+import subprocess
 from rez.util import which
 from rez.utils.system import popen
 from rez.utils.data_utils import cached_property
@@ -214,9 +215,9 @@ class LinuxPlatform(_UnixPlatform):
             distributor, release = _parse(txt,
                                           "DISTRIB_ID=",
                                           "DISTRIB_RELEASE=")
-        result = _os()
-        if result:
-            return result
+            result = _os()
+            if result:
+                return result
 
         # next, try getting the output of the lsb_release program
         import subprocess
@@ -234,9 +235,29 @@ class LinuxPlatform(_UnixPlatform):
             if release_ and not release:
                 release = release_
 
-        result = _os()
-        if result:
-            return result
+            result = _os()
+            if result:
+                return result
+
+        # try to read the /etc/os-release file
+        # this file contains OS specific data on linux
+        # distributions
+        # see https://www.freedesktop.org/software/systemd/man/os-release.html
+        os_release = '/etc/os-release'
+        if os.path.isfile(os_release):
+            with open(os_release, 'r') as f:
+                txt = f.read()
+            distributor_, release_ = _parse(txt,
+                                            "ID=",
+                                            "VERSION_ID=")
+            if distributor_ and not distributor:
+                distributor = distributor_
+            if release_ and not release:
+                release = release_
+
+            result = _os()
+            if result:
+                return result
 
         # last, use python's dist detection. It is known to return incorrect
         # info on some systems though
@@ -249,6 +270,7 @@ class LinuxPlatform(_UnixPlatform):
             distributor = distributor_
         if release_ and not release:
             release = release_
+
         result = _os()
         if result:
             return result
@@ -475,6 +497,11 @@ class WindowsPlatform(Platform):
         # http://stackoverflow.com/questions/6260149/os-symlink-support-in-windows
         if callable(getattr(os, "symlink", None)):
             os.symlink(source, link_name)
+        elif "Windows-10" in platform.platform():
+            # Starting with Windows 10 Insiders build 14972, symlinks can be
+            # created without needing to elevate the console as administrator.
+            # https://blogs.windows.com/windowsdeveloper/2016/12/02/symlinks-windows-10/#joC5tFKhdXs2gGml.97
+            subprocess.check_output("mklink %s %s" % (link_name, source), shell=True)
         else:
             import ctypes
             csl = ctypes.windll.kernel32.CreateSymbolicLinkW

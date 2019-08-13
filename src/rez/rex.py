@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os
 import subprocess
 import sys
@@ -601,12 +603,12 @@ class Python(ActionInterpreter):
     def info(self, value):
         if not self.passive:
             value = self.escape_string(value)
-            print value
+            print(value)
 
     def error(self, value):
         if not self.passive:
             value = self.escape_string(value)
-            print >> sys.stderr, value
+            print(value, file=sys.stderr)
 
     def subprocess(self, args, **subproc_kwargs):
         if self.manager:
@@ -1141,8 +1143,8 @@ class RexExecutor(object):
             code (str or SourceCode): The python code to compile.
             filename (str): File to associate with the code, will default to
                 '<string>'.
-            namespace (dict): Namespace to execute the code in. If None, the
-                code is not executed.
+            exec_namespace (dict): Namespace to execute the code in. If None,
+                the code is not executed.
 
         Returns:
             Compiled code object.

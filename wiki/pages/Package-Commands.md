@@ -312,7 +312,7 @@ environment from being constructed (use the [stop](#stop) command for that).
     if getenv("REZ_MAYA_VERSION") == "2016.sp1":
         pass
 
-Gets the value of an environment variable, or returns None if the environment variable is not set.
+Gets the value of an environment variable; raises *RexUndefinedVariableError* if not set.
 
 ### implicits
 *Dict-like object*
@@ -326,7 +326,7 @@ defined by the [implicit_packages](Configuring-Rez#implicit_packages) configurat
 ### info
 *Function*
 
-    info("floob version is %s", resolve.floob.version)
+    info("floob version is %s" % resolve.floob.version)
 
 Prints to standard out.
 

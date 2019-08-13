@@ -1,4 +1,4 @@
-from rez.utils._version import _rez_Version
+from rez.utils._version import _rez_version
 from rez.utils.schema import Required, schema_keys
 from rez.utils.filesystem import retain_cwd
 from rez.utils.formatting import PackageRequest
@@ -50,6 +50,9 @@ package_schema = Schema({
     # deliberately not possible to late bind
     Optional('variants'):               [[package_request_schema]],
 
+    Optional('relocatable'):            late_bound(Or(None, bool)),
+    Optional('hashed_variants'):        bool,
+
     Optional('uuid'):                   basestring,
     Optional('config'):                 dict,
     Optional('tools'):                  late_bound([basestring]),
@@ -62,6 +65,7 @@ package_schema = Schema({
     Optional('post_commands'):          _commands_schema,
 
     # attributes specific to pre-built packages
+    Optional("build_system"):           basestring,
     Optional("build_command"):          Or([basestring], basestring, False),
     Optional("preprocess"):             _function_schema,
 
@@ -100,10 +104,11 @@ class PackageMaker(AttrDictWrapper):
         if "requires_rez_version" in package_data:
             ver = package_data.pop("requires_rez_version")
 
-            if _rez_Version < ver:
+            if Version(_rez_version) < ver:
                 raise PackageMetadataError(
                     "Failed reading package definition file: rez version >= %s "
-                    "needed (current version is %s)" % (ver, _rez_Version))
+                    "needed (current version is %s)" % (ver, _rez_version)
+                )
 
         # create a 'memory' package repository containing just this package
         version_str = package_data.get("version") or "_NO_VERSION"

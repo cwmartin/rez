@@ -8,8 +8,7 @@ from rez.utils.scope import scoped_format
 from rez.exceptions import ConfigurationError
 from rez import module_root_path
 from rez.system import system
-from rez.vendor.schema.schema import Schema, SchemaError, Optional, And, Or, Use
-from rez.vendor.enum import Enum
+from rez.vendor.schema.schema import Schema, SchemaError, And, Or, Use
 from rez.vendor import yaml
 from rez.vendor.yaml.error import YAMLError
 from rez.backport.lru_cache import lru_cache
@@ -59,11 +58,25 @@ class Setting(object):
         if self.key in self.config.overrides:
             return data
 
-        # next, env-var
-        if self._env_var_name and not self.config.locked:
+        if not self.config.locked:
+
+            # next, env-var
             value = os.getenv(self._env_var_name)
             if value is not None:
                 return self._parse_env_var(value)
+
+            # next, JSON-encoded env-var
+            varname = self._env_var_name + "_JSON"
+            value = os.getenv(varname)
+            if value is not None:
+                from rez.utils import json
+
+                try:
+                    return json.loads(value)
+                except ValueError:
+                    raise ConfigurationError(
+                        "Expected $%s to be JSON-encoded string." % varname
+                    )
 
         # next, data unchanged
         if data is not None:
@@ -113,6 +126,10 @@ class OptionalStrList(StrList):
 class PathList(StrList):
     sep = os.pathsep
 
+    def _parse_env_var(self, value):
+        value = value.split(self.sep)
+        return [x for x in value if x]
+
 
 class Int(Setting):
     schema = Schema(int)
@@ -121,8 +138,9 @@ class Int(Setting):
         try:
             return int(value)
         except ValueError:
-            raise ConfigurationError("expected %s to be an integer"
+            raise ConfigurationError("Expected %s to be an integer"
                                      % self._env_var_name)
+
 
 class Bool(Setting):
     schema = Schema(bool)
@@ -138,7 +156,7 @@ class Bool(Setting):
             return False
         else:
             raise ConfigurationError(
-                "expected $%s to be one of: %s"
+                "Expected $%s to be one of: %s"
                 % (self._env_var_name, ", ".join(self.all_words)))
 
 
@@ -160,12 +178,28 @@ class Dict(Setting):
 
     def _parse_env_var(self, value):
         items = value.split(",")
-        try:
-            return dict([item.split(":") for item in items])
-        except ValueError:
-            raise ConfigurationError(
-                "expected dict string in form 'k1:v1,k2:v2,...kN:vN': %s"
-                % value)
+        result = {}
+
+        for item in items:
+            if ':' not in item:
+                raise ConfigurationError(
+                    "Expected dict string in form 'k1:v1,k2:v2,...kN:vN': %s"
+                    % value
+                )
+
+            k, v = item.split(':', 1)
+
+            try:
+                v = int(v)
+            except ValueError:
+                try:
+                    v = float(v)
+                except ValueError:
+                    pass
+
+            result[k] = v
+
+        return result
 
 
 class OptionalDict(Dict):
@@ -177,7 +211,6 @@ class OptionalDictOrDictList(Setting):
     schema = Or(And(None, Use(lambda x: [])),
                 And(dict, Use(lambda x: [x])),
                 [dict])
-    _env_var_name = None
 
 
 class SuiteVisibility_(Str):
@@ -199,6 +232,21 @@ class RezToolsVisibility_(Str):
     def schema(cls):
         from rez.resolved_context import RezToolsVisibility
         return Or(*(x.name for x in RezToolsVisibility))
+
+
+class OptionalStrOrFunction(Setting):
+    schema = Or(None, basestring, callable)
+
+    def _parse_env_var(self, value):
+        # note: env-var override only supports string, eg 'mymodule.preprocess_func'
+        return value
+
+
+class PreprocessMode_(Str):
+    @cached_class_property
+    def schema(cls):
+        from rez.developer_package import PreprocessMode
+        return Or(*(x.name for x in PreprocessMode))
 
 
 class BuildThreadCount_(Setting):
@@ -229,12 +277,14 @@ config_schema = Schema({
     "packages_path":                                PathList,
     "plugin_path":                                  PathList,
     "bind_module_path":                             PathList,
+    "standard_system_paths":                        PathList,
     "package_definition_build_python_paths":        PathList,
     "implicit_packages":                            StrList,
     "platform_map":                                 OptionalDict,
     "parent_variables":                             StrList,
     "resetting_variables":                          StrList,
     "release_hooks":                                StrList,
+    "context_tracking_context_fields":              StrList,
     "prompt_release_message":                       Bool,
     "critical_styles":                              OptionalStrList,
     "error_styles":                                 OptionalStrList,
@@ -281,7 +331,10 @@ config_schema = Schema({
     "implicit_back":                                OptionalStr,
     "alias_fore":                                   OptionalStr,
     "alias_back":                                   OptionalStr,
-    "package_preprocess_function":                  OptionalStr,
+    "package_preprocess_function":                  OptionalStrOrFunction,
+    "package_preprocess_mode":                      PreprocessMode_,
+    "context_tracking_host":                        OptionalStr,
+    "variant_shortlinks_dirname":                   OptionalStr,
     "build_thread_count":                           BuildThreadCount_,
     "resource_caching_maxsize":                     Int,
     "max_package_changelog_chars":                  Int,
@@ -300,6 +353,7 @@ config_schema = Schema({
     "all_parent_variables":                         Bool,
     "all_resetting_variables":                      Bool,
     "package_commands_sourced_first":               Bool,
+    "use_variant_shortlinks":                       Bool,
     "warn_shell_startup":                           Bool,
     "warn_untimestamped":                           Bool,
     "warn_all":                                     Bool,
@@ -318,26 +372,24 @@ config_schema = Schema({
     "show_progress":                                Bool,
     "catch_rex_errors":                             Bool,
     "shell_error_truncate_cap":                     Int,
+    "default_relocatable":                          Bool,
     "set_prompt":                                   Bool,
     "prefix_prompt":                                Bool,
     "warn_old_commands":                            Bool,
     "error_old_commands":                           Bool,
     "debug_old_commands":                           Bool,
-    "warn_package_name_mismatch":                   Bool,
-    "error_package_name_mismatch":                  Bool,
-    "warn_version_mismatch":                        Bool,
-    "error_version_mismatch":                       Bool,
-    "warn_nonstring_version":                       Bool,
-    "error_nonstring_version":                      Bool,
     "warn_commands2":                               Bool,
     "error_commands2":                              Bool,
     "rez_1_environment_variables":                  Bool,
     "rez_1_cmake_variables":                        Bool,
     "disable_rez_1_compatibility":                  Bool,
+    "make_package_temporarily_writable":            Bool,
     "env_var_separators":                           Dict,
     "variant_select_mode":                          VariantSelectMode_,
     "package_filter":                               OptionalDictOrDictList,
     "new_session_popen_args":                       OptionalDict,
+    "context_tracking_amqp":                        OptionalDict,
+    "context_tracking_extra_fields":                OptionalDict,
 
     # GUI settings
     "use_pyside":                                   Bool,
@@ -461,7 +513,7 @@ class Config(object):
         Returns:
             List of str: The sourced files.
         """
-        _ = self._data  # force a config load
+        _ = self._data  # noqa; force a config load
         return self._sourced_filepaths
 
     @cached_property
@@ -759,6 +811,12 @@ def _load_config_py(filepath):
     from rez.vendor.six.six import exec_
 
     reserved = dict(
+        # Standard Python module variables
+        # Made available from within the module,
+        # and later excluded from the `Config` class
+        __name__=os.path.splitext(os.path.basename(filepath))[0],
+        __file__=filepath,
+
         rez_version=__version__,
         ModifyList=ModifyList
     )

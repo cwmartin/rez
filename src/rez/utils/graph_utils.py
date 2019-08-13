@@ -1,6 +1,8 @@
 """
 Functions for manipulating dot-based resolve graphs.
 """
+from __future__ import print_function
+
 import re
 import os.path
 import subprocess
@@ -210,15 +212,48 @@ def save_graph(graph_str, dest_file, fmt=None, image_ratio=None):
     Returns:
         String representing format that was written, such as 'png'.
     """
-    g = pydot.graph_from_dot_data(graph_str)
+
+    # Disconnected edges can result in multiple graphs. We should never see
+    # this - it's a bug in graph generation if we do.
+    #
+    graphs = pydot.graph_from_dot_data(graph_str)
+
+    if not graphs:
+        raise RuntimeError("No graph generated")
+
+    if len(graphs) > 1:
+        path, ext = os.path.splitext(dest_file)
+        dest_files = []
+
+        for i, g in enumerate(graphs):
+            try:
+                dest_file_ = "%s.%d%s" % (path, i + 1, ext)
+                save_graph_object(g, dest_file_, fmt, image_ratio)
+                dest_files.append(dest_file_)
+            except:
+                pass
+
+        raise RuntimeError(
+            "More than one graph was generated; this probably indicates a bug "
+            "in graph generation. Graphs were written to %r" % dest_files
+        )
+
+    # write the graph
+    return save_graph_object(graphs[0], dest_file, fmt, image_ratio)
+
+
+def save_graph_object(g, dest_file, fmt=None, image_ratio=None):
+    """Like `save_graph`, but takes a pydot Dot object.
+    """
 
     # determine the dest format
     if fmt is None:
         fmt = os.path.splitext(dest_file)[1].lower().strip('.') or "png"
+
     if hasattr(g, "write_" + fmt):
         write_fn = getattr(g, "write_" + fmt)
     else:
-        raise Exception("Unsupported graph format: '%s'" % fmt)
+        raise RuntimeError("Unsupported graph format: '%s'" % fmt)
 
     if image_ratio:
         g.set_ratio(str(image_ratio))
@@ -232,7 +267,7 @@ def view_graph(graph_str, dest_file=None):
     from rez.config import config
 
     if (system.platform == "linux") and (not os.getenv("DISPLAY")):
-        print >> sys.stderr, "Unable to open display."
+        print("Unable to open display.", file=sys.stderr)
         sys.exit(1)
 
     dest_file = _write_graph(graph_str, dest_file=dest_file)
@@ -240,7 +275,7 @@ def view_graph(graph_str, dest_file=None):
     # view graph
     viewed = False
     prog = config.image_viewer or 'browser'
-    print "loading image viewer (%s)..." % prog
+    print("loading image viewer (%s)..." % prog)
 
     if config.image_viewer:
         proc = popen([config.image_viewer, dest_file])
@@ -259,7 +294,7 @@ def _write_graph(graph_str, dest_file=None):
         os.close(tmpf[0])
         dest_file = tmpf[1]
 
-    print "rendering image to " + dest_file + "..."
+    print("rendering image to " + dest_file + "...")
     save_graph(graph_str, dest_file)
     return dest_file
 
